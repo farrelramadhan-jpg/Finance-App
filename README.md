@@ -1,17 +1,41 @@
-# finance_app
+# Finance App 💰
 
-A new Flutter project.
+Aplikasi manajemen keuangan pribadi berbasis Flutter.
 
-## Getting Started
+## Tech Stack
+- Flutter & Dart
+- Supabase (Database)
+- QuickChart.io (Grafik)
 
-This project is a starting point for a Flutter application.
+## Setup Project
 
-A few resources to get you started if this is your first Flutter project:
+### 1. Clone repo
+```bash
+git clone https://github.com/username/finance-app.git
+cd finance-app
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+### 2. Install dependencies
+```bash
+flutter pub get
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+### 3. Setup Supabase Config
+Salin file contoh lalu isi dengan kredensial yang didapat dari Anggota 1:
+```bash
+cp lib/config/supabase_config.example.dart lib/config/supabase_config.dart
+```
+
+### 4. Jalankan app
+```bash
+flutter run
+```
+
+## Pembagian Tugas
+| Anggota | Branch | Tugas |
+|---------|--------|-------|
+| Anggota 1 | dev | Setup & Integrasi |
+| Anggota 2 | feature/dashboard-riwayat | Dashboard & Riwayat |
+| Anggota 3 | feature/tambah-edit-transaksi | Form Transaksi |
+| Anggota 4 | feature/supabase-crud | Koneksi Supabase |
+| Anggota 5 | feature/analisis-chart | Grafik & Analisis |
