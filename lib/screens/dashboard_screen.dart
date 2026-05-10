@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/transaction_model.dart';
 import '../models/wallet_model.dart';
+import '../screens/tambah_transaksi_screen.dart';
+import '../screens/riwayat_transaksi_screen.dart';
 import '../services/transaction_service.dart';
 import '../utils/currency_formatter.dart';
 import '../widgets/transaction_card.dart';
@@ -20,11 +22,11 @@ class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  State<DashboardScreen> createState() => DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
-  // ─── Service & State ────────────────────────────────────────────────────────
+class DashboardScreenState extends State<DashboardScreen> {
+  // ─── Service & State ───────────────────────────────────────────────────────
 
   final TransactionService _transactionService = TransactionService();
 
@@ -33,6 +35,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Semua transaksi yang sudah difilter sesuai periode
   List<TransactionModel> _transaksiFiltered = [];
+
+  /// Summary transaksi dari server (saldo, pemasukan, pengeluaran)
+  Map<String, int> _summary = {'pemasukan': 0, 'pengeluaran': 0, 'saldo': 0};
 
   /// Status loading data dari Supabase
   bool _isLoading = true;
@@ -90,18 +95,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() => _isLoading = true);
     try {
       final semua = await _transactionService.getAll();
+      final summary = await _transactionService.getSummary();
+      if (!mounted) return;
       setState(() {
         _transaksiFiltered = _filterByPeriode(semua, _periodeAktif);
+        _summary = summary;
         _isLoading = false;
       });
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal memuat data: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal memuat data: $e')));
       }
     }
+  }
+
+  /// Memuat ulang data ketika halaman perlu refresh
+  Future<void> reloadData() async {
+    await _loadData();
   }
 
   /// Memfilter daftar transaksi berdasarkan periode yang dipilih
@@ -147,6 +160,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
     try {
       final semua = await _transactionService.getAll();
+      if (!mounted) return;
       setState(() {
         _transaksiFiltered = _filterByPeriode(semua, periode);
         _isLoading = false;
@@ -168,25 +182,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       .where((t) => t.tipe == 'pengeluaran')
       .fold(0, (sum, t) => sum + t.nominal);
 
-  /// Total saldo keseluruhan dari semua dompet
+  /// Total saldo keseluruhan dari semua transaksi
   int get _totalSaldo =>
-      _daftarDompet.fold(0, (sum, w) => sum + w.saldo);
+      _summary['saldo'] ?? _daftarDompet.fold(0, (sum, w) => sum + w.saldo);
 
   // ─── Logic: Grouping Transaksi per Tanggal ───────────────────────────────────
 
-  /// Mengelompokkan transaksi berdasarkan tanggal (yyyy-MM-dd)
-  /// dan mengurutkan dari tanggal terbaru
-  Map<String, List<TransactionModel>> get _transaksiPerTanggal {
-    final Map<String, List<TransactionModel>> grouped = {};
-    for (final t in _transaksiFiltered) {
-      // Key berupa string tanggal untuk pengelompokan
-      final key = DateFormat('yyyy-MM-dd').format(t.tanggal);
-      grouped.putIfAbsent(key, () => []).add(t);
-    }
-    // Urutkan key dari terbaru ke terlama
-    final sortedKeys = grouped.keys.toList()
-      ..sort((a, b) => b.compareTo(a));
-    return {for (final k in sortedKeys) k: grouped[k]!};
+  /// Semua transaksi diurutkan dari terbaru ke terlama berdasarkan waktu
+  List<TransactionModel> get _transaksiSorted {
+    final sorted = List<TransactionModel>.from(_transaksiFiltered)
+      ..sort((a, b) => b.tanggal.compareTo(a.tanggal));
+    return sorted;
   }
 
   /// Format tanggal untuk header grup transaksi
@@ -224,9 +230,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: CustomScrollView(
             slivers: [
               // ── Filter Periode ─────────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: _buildPeriodeFilter(),
-              ),
+              SliverToBoxAdapter(child: _buildPeriodeFilter()),
 
               // ── Card Ringkasan Saldo ───────────────────────────────────────
               SliverToBoxAdapter(
@@ -247,16 +251,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   },
                 ),
               ),
-              SliverToBoxAdapter(
-                child: _buildDompetList(),
-              ),
+              SliverToBoxAdapter(child: _buildDompetList()),
 
               const SliverToBoxAdapter(child: SizedBox(height: 24)),
 
               // ── Section Riwayat Transaksi ──────────────────────────────────
-              SliverToBoxAdapter(
-                child: _buildTransaksiHeader(),
-              ),
+              SliverToBoxAdapter(child: _buildTransaksiHeader()),
 
               // Konten transaksi: loading / kosong / daftar
               if (_isLoading)
@@ -273,9 +273,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               else if (_transaksiFiltered.isEmpty)
                 SliverToBoxAdapter(child: _buildEmptyState())
               else
-                SliverToBoxAdapter(
-                  child: _buildTransaksiList(),
-                ),
+                SliverToBoxAdapter(child: _buildTransaksiList()),
 
               // Padding bawah agar konten tidak tertutup navbar
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
@@ -308,8 +306,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onTap: () => _onPeriodeChanged(entry.key),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
                 // Tab aktif menggunakan warna putih, tidak aktif transparan
                 color: isActive ? Colors.white : Colors.transparent,
@@ -321,8 +318,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   color: isActive
                       ? const Color(0xFF12141E) // teks gelap di tab aktif
                       : Colors.white54,
-                  fontWeight:
-                      isActive ? FontWeight.w600 : FontWeight.normal,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
                   fontSize: 13,
                 ),
               ),
@@ -377,9 +373,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           // Nominal total saldo (bisa disembunyikan)
           Text(
-            _saldoTerlihat
-                ? CurrencyFormatter.format(_totalSaldo)
-                : '••••••••',
+            _saldoTerlihat ? CurrencyFormatter.format(_totalSaldo) : '••••••••',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 28,
@@ -477,10 +471,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   /// Membangun header section dengan judul dan tombol titik tiga
-  Widget _buildSectionHeader({
-    required String title,
-    VoidCallback? onMore,
-  }) {
+  Widget _buildSectionHeader({required String title, VoidCallback? onMore}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -546,14 +537,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           GestureDetector(
             onTap: () {
-              // TODO: Navigasi ke halaman semua transaksi
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const RiwayatTransaksiScreen(),
+                ),
+              );
             },
             child: const Text(
               'Lihat Semua',
-              style: TextStyle(
-                color: Color(0xFF4A90D9),
-                fontSize: 13,
-              ),
+              style: TextStyle(color: Color(0xFF4A90D9), fontSize: 13),
             ),
           ),
         ],
@@ -561,17 +554,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Membangun daftar transaksi yang dikelompokkan per tanggal
+  /// Membangun daftar transaksi yang dikelompokkan per tanggal (max 3 transaksi terbaru)
   Widget _buildTransaksiList() {
-    final grouped = _transaksiPerTanggal;
+    // Ambil 3 transaksi terbaru
+    final top3Transactions = _transaksiSorted.take(3).toList();
+
+    if (top3Transactions.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: Center(
+          child: Text(
+            'Belum ada transaksi',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+          ),
+        ),
+      );
+    }
+
+    // Kelompokkan 3 transaksi berdasarkan tanggal untuk display
+    final Map<String, List<TransactionModel>> grouped = {};
+    for (final t in top3Transactions) {
+      final key = DateFormat('yyyy-MM-dd').format(t.tanggal);
+      grouped.putIfAbsent(key, () => []).add(t);
+    }
+    // Urutkan transaksi dalam setiap hari dari terbaru ke terlama
+    for (final list in grouped.values) {
+      list.sort((a, b) => b.tanggal.compareTo(a.tanggal));
+    }
+    // Urutkan key dari terbaru ke terlama
+    final sortedKeys = grouped.keys.toList()..sort((a, b) => a.compareTo(b));
+    final reversedKeys = sortedKeys.reversed;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: grouped.entries.map((entry) {
-          final dateKey = entry.key;
-          final transaksi = entry.value;
+        children: reversedKeys.map((dateKey) {
+          final transaksi = grouped[dateKey]!;
           final totalHari = _totalPerTanggal(transaksi);
           final isPositif = totalHari >= 0;
 
@@ -611,9 +630,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ...transaksi.map(
                 (t) => TransactionCard(
                   transaction: t,
-                  onTap: () {
-                    // TODO: Navigasi ke detail transaksi
-                  },
+                  onTap: () => _showTransactionActions(t),
                 ),
               ),
             ],
@@ -621,6 +638,122 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }).toList(),
       ),
     );
+  }
+
+  /// Menampilkan aksi edit atau hapus untuk transaksi
+  void _showTransactionActions(TransactionModel transaksi) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF12141E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.edit, color: Color(0xFF4A90D9)),
+                title: const Text(
+                  'Edit Transaksi',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _navigateToEditTransaction(transaksi);
+                },
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_outline,
+                  color: Color(0xFFE74C3C),
+                ),
+                title: const Text(
+                  'Hapus Transaksi',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmDeleteTransaction(transaksi);
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Navigasi ke halaman edit transaksi
+  Future<void> _navigateToEditTransaction(TransactionModel transaksi) async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TambahTransaksiScreen(transaction: transaksi),
+      ),
+    );
+    if (result == true) {
+      await _loadData();
+    }
+  }
+
+  /// Konfirmasi dan hapus transaksi dari database
+  Future<void> _confirmDeleteTransaction(TransactionModel transaksi) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E2130),
+          title: const Text(
+            'Hapus Transaksi',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: const Text(
+            'Apakah kamu yakin ingin menghapus transaksi ini?',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Batal'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Hapus'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm == true) {
+      try {
+        await _transactionService.delete(transaksi.id!);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Transaksi berhasil dihapus')),
+        );
+        await _loadData();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal menghapus transaksi: $e')),
+          );
+        }
+      }
+    }
   }
 
   /// Tampilan kosong ketika tidak ada transaksi pada periode yang dipilih

@@ -1,5 +1,5 @@
 class TransactionModel {
-  final String? id;
+  final Object? id;
   final String judul;
   final int nominal;
   final String tipe; // 'pemasukan' atau 'pengeluaran'
@@ -19,14 +19,24 @@ class TransactionModel {
 
   // Konversi dari Supabase (Map) ke Model
   factory TransactionModel.fromMap(Map<String, dynamic> map) {
+    final rawId = map['id'];
+    final rawNominal = map['nominal'];
+    final rawTanggal = map['tanggal'];
+
     return TransactionModel(
-      id: map['id'],
-      judul: map['judul'],
-      nominal: map['nominal'],
-      tipe: map['tipe'],
-      kategori: map['kategori'],
-      catatan: map['catatan'],
-      tanggal: DateTime.parse(map['tanggal']),
+      id: rawId,
+      judul: map['judul']?.toString() ?? '',
+      nominal: rawNominal is int
+          ? rawNominal
+          : int.tryParse(rawNominal?.toString() ?? '') ?? 0,
+      tipe: map['tipe']?.toString() ?? '',
+      kategori: map['kategori']?.toString() ?? '',
+      catatan: map['catatan']?.toString(),
+      tanggal: rawTanggal is DateTime
+          ? rawTanggal
+          : DateTime.parse(
+              rawTanggal?.toString() ?? DateTime.now().toIso8601String(),
+            ),
     );
   }
 

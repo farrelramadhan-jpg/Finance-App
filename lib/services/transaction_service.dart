@@ -20,7 +20,7 @@ class TransactionService {
   }
 
   // Update transaksi
-  Future<void> update(String id, TransactionModel transaction) async {
+  Future<void> update(Object id, TransactionModel transaction) async {
     await _supabase
         .from('transactions')
         .update(transaction.toMap())
@@ -28,7 +28,7 @@ class TransactionService {
   }
 
   // Hapus transaksi
-  Future<void> delete(String id) async {
+  Future<void> delete(Object id) async {
     await _supabase.from('transactions').delete().eq('id', id);
   }
 

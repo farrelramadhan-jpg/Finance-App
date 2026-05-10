@@ -24,11 +24,14 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Indeks halaman yang sedang aktif
   int _currentIndex = 0;
 
+  final GlobalKey<DashboardScreenState> _dashboardKey =
+      GlobalKey<DashboardScreenState>();
+
   /// Daftar halaman yang bisa diakses via navbar
-  final List<Widget> _pages = const [
-    DashboardScreen(),  // index 0 - Dashboard
-    StatistikScreen(),  // index 1 - Statistik
-    DompetScreen(),     // index 2 - Dompet
+  late final List<Widget> _pages = [
+    DashboardScreen(key: _dashboardKey), // index 0 - Dashboard
+    const StatistikScreen(), // index 1 - Statistik
+    const DompetScreen(), // index 2 - Dompet
   ];
 
   /// Mengganti halaman aktif dan memberikan haptic feedback
@@ -39,15 +42,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Membuka halaman tambah transaksi sebagai modal bottom sheet
-  void _onFabTap() {
+  void _onFabTap() async {
     HapticFeedback.mediumImpact();
-    Navigator.push(
+    final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => const TambahTransaksiScreen(),
         fullscreenDialog: true, // animasi dari bawah ke atas
       ),
     );
+    if (result == true) {
+      _dashboardKey.currentState?.reloadData();
+    }
   }
 
   @override
@@ -57,10 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Gunakan IndexedStack agar state setiap halaman tetap terjaga
       // saat berpindah tab (tidak di-rebuild dari awal)
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _pages),
 
       // Sembunyikan default bottom nav bar karena kita buat custom
       extendBody: true,
